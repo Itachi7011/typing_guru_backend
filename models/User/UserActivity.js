@@ -14,12 +14,7 @@ const UserActivitySchema = new mongoose.Schema({
             enum: [`${process.env.APP_NAME}_User`, `${process.env.APP_NAME}_Admin`, `${process.env.APP_NAME}_Client`]
         }
     },
-    // The client/tenant context
-    clientId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: `${process.env.APP_NAME}_Client`,
-        required: true
-    },
+
     // Core activity information
     eventType: {
         type: String,
@@ -86,10 +81,8 @@ const UserActivitySchema = new mongoose.Schema({
     timestamps: true,
     indexes: [
         { 'user.userId': 1, createdAt: -1 },
-        { clientId: 1, eventType: 1, createdAt: -1 },
         { eventAction: 1 },
         { createdAt: 1 },
-        { clientId: 1, eventType: 1, 'user.userModel': 1, createdAt: -1 },
         // TTL index for auto-delete old events
         { 
             createdAt: 1, 
@@ -129,11 +122,9 @@ UserActivitySchema.statics.getRetentionSettings = function () {
 
 // Indexes for powerful analytics queries
 UserActivitySchema.index({ 'user.userId': 1, createdAt: -1 });
-UserActivitySchema.index({ clientId: 1, eventType: 1, createdAt: -1 });
 UserActivitySchema.index({ eventAction: 1 });
 UserActivitySchema.index({ createdAt: 1 }); // Time-series analysis
 // Compound index for common analytics dashboards
-UserActivitySchema.index({ clientId: 1, eventType: 1, 'user.userModel': 1, createdAt: -1 });
 
 // Optional: TTL index to auto-delete old events for data retention (e.g., 2 years)
 // UserActivitySchema.index({ createdAt: 1 }, { expireAfterSeconds: 63072000 }); // 2 years in seconds

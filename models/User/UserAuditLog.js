@@ -63,10 +63,6 @@ const UserAuditLogSchema = new mongoose.Schema({
         ref: `${process.env.APP_NAME}_User`,
         required: true
     },
-    clientId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: `${process.env.APP_NAME}_Client`
-    },
     ipAddress: String,
     userAgent: String,
     userAgentDetails: {
@@ -161,7 +157,6 @@ const UserAuditLogSchema = new mongoose.Schema({
     timestamps: true,
     indexes: [
         { userId: 1, createdAt: -1 },
-        { clientId: 1, createdAt: -1 },
         { action: 1, createdAt: -1 },
         { status: 1, createdAt: -1 },
         { severity: 1, createdAt: -1 },

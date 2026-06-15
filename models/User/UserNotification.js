@@ -14,11 +14,7 @@ const UserNotificationSchema = new mongoose.Schema({
             enum: [`${process.env.APP_NAME}_User`, `${process.env.APP_NAME}_Admin`, `${process.env.APP_NAME}_Client`]
         }
     },
-    // The client/tenant context for the notification
-    clientId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: `${process.env.APP_NAME}_Client`
-    },
+
     type: {
         type: String,
         required: true,
@@ -78,7 +74,6 @@ const UserNotificationSchema = new mongoose.Schema({
 
 // Indexes for efficient querying and fetching
 UserNotificationSchema.index({ 'recipient.userId': 1, isRead: 1, createdAt: -1 });
-UserNotificationSchema.index({ clientId: 1, type: 1 });
 UserNotificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // Auto-delete expired docs
 UserNotificationSchema.index({ createdAt: 1 });
 
