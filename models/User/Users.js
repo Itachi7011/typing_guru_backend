@@ -512,11 +512,11 @@ const UserSchema = new mongoose.Schema(
         challengeReminders: { type: Boolean, default: true },
       },
       ui: {
-        theme: {
-          type: String,
-          enum: ["light", "dark", "auto"],
-          default: "auto",
-        },
+        theme: { 
+          type: String, 
+          enum: ["light", "dark", "auto"], 
+          default: "auto", 
+        }, 
         language: { type: String, default: "en" },
         soundEffects: { type: Boolean, default: true },
         keyboardSound: { type: Boolean, default: false },

@@ -223,8 +223,7 @@ const ALLOWED_PREF_KEYS = {
 
 const PREF_VALIDATORS = {
   "ui.theme": (v) => ["light", "dark", "auto"].includes(v),
-  "typing.fontSize": (v) =>
-    typeof v === "number" && v >= 10 && v <= 32,
+  "typing.fontSize": (v) => typeof v === "number" && v >= 10 && v <= 32,
   "typing.practiceMode": (v) => ["timed", "words", "custom"].includes(v),
 };
 
@@ -383,10 +382,18 @@ router.post("/sync-local-data", authMiddleware, async (req, res) => {
     let syncedFields = [];
 
     // Sync testHistory
-    if (localData.testHistory && Array.isArray(localData.testHistory) && localData.testHistory.length > 0) {
-      const existingDates = new Set(user.testHistory.map(t => new Date(t.date).toISOString()));
-      const newTests = localData.testHistory.filter(t => !existingDates.has(new Date(t.date).toISOString()));
-      
+    if (
+      localData.testHistory &&
+      Array.isArray(localData.testHistory) &&
+      localData.testHistory.length > 0
+    ) {
+      const existingDates = new Set(
+        user.testHistory.map((t) => new Date(t.date).toISOString()),
+      );
+      const newTests = localData.testHistory.filter(
+        (t) => !existingDates.has(new Date(t.date).toISOString()),
+      );
+
       if (newTests.length > 0) {
         user.testHistory.push(...newTests);
         if (user.testHistory.length > 100) {
@@ -430,7 +437,7 @@ router.post("/sync-local-data", authMiddleware, async (req, res) => {
     if (localData.xp && localData.xp > user.xp) {
       user.xp = localData.xp;
       syncedFields.push("xp");
-      
+
       let newLevel = user.level;
       let requiredXp = user.calculateRequiredXp(newLevel + 1);
       while (user.xp >= requiredXp) {
@@ -459,26 +466,34 @@ router.post("/sync-local-data", authMiddleware, async (req, res) => {
         user.streak.longest = localData.streak.longest;
         syncedFields.push("streak.longest");
       }
-      if (localData.streak.lastDate && (!user.streak.lastDate || new Date(localData.streak.lastDate) > user.streak.lastDate)) {
+      if (
+        localData.streak.lastDate &&
+        (!user.streak.lastDate ||
+          new Date(localData.streak.lastDate) > user.streak.lastDate)
+      ) {
         user.streak.lastDate = new Date(localData.streak.lastDate);
         syncedFields.push("streak.lastDate");
       }
     }
 
     // FIXED: Sync badges - properly format them for MongoDB
-    if (localData.badges && Array.isArray(localData.badges) && localData.badges.length > 0) {
-      const existingBadgeNames = new Set(user.badges.map(b => b.name));
-      
+    if (
+      localData.badges &&
+      Array.isArray(localData.badges) &&
+      localData.badges.length > 0
+    ) {
+      const existingBadgeNames = new Set(user.badges.map((b) => b.name));
+
       // Filter out badges that already exist and format them properly
       const newBadges = localData.badges
-        .filter(b => b && b.name && !existingBadgeNames.has(b.name))
-        .map(b => ({
+        .filter((b) => b && b.name && !existingBadgeNames.has(b.name))
+        .map((b) => ({
           name: b.name,
           earnedAt: b.earnedAt ? new Date(b.earnedAt) : new Date(),
           icon: b.icon || null,
-          description: b.description || `Earned ${b.name} badge`
+          description: b.description || `Earned ${b.name} badge`,
         }));
-      
+
       if (newBadges.length > 0) {
         user.badges.push(...newBadges);
         syncedFields.push("badges");
@@ -490,7 +505,7 @@ router.post("/sync-local-data", authMiddleware, async (req, res) => {
       if (localData.stats.allTime) {
         const allTime = user.stats.allTime;
         const localAllTime = localData.stats.allTime;
-        
+
         if (localAllTime.avgWpm > allTime.avgWpm) {
           allTime.avgWpm = localAllTime.avgWpm;
           syncedFields.push("stats.allTime.avgWpm");
@@ -525,7 +540,7 @@ router.post("/sync-local-data", authMiddleware, async (req, res) => {
     // Sync preferences
     if (localData.preferences && typeof localData.preferences === "object") {
       const prefs = user.preferences || {};
-      
+
       if (localData.preferences.ui) {
         prefs.ui = { ...prefs.ui, ...localData.preferences.ui };
         syncedFields.push("preferences.ui");
@@ -535,10 +550,13 @@ router.post("/sync-local-data", authMiddleware, async (req, res) => {
         syncedFields.push("preferences.typing");
       }
       if (localData.preferences.communication) {
-        prefs.communication = { ...prefs.communication, ...localData.preferences.communication };
+        prefs.communication = {
+          ...prefs.communication,
+          ...localData.preferences.communication,
+        };
         syncedFields.push("preferences.communication");
       }
-      
+
       user.preferences = prefs;
     }
 
@@ -550,7 +568,6 @@ router.post("/sync-local-data", authMiddleware, async (req, res) => {
       syncedFields,
       user: user.getPublicProfile(),
     });
-
   } catch (error) {
     console.error("Sync local data error:", error);
     return res.status(500).json({
@@ -612,7 +629,7 @@ router.post("/reset-stats", authMiddleware, async (req, res) => {
         resetFields.push("gamification");
       },
       badges: () => {
-        user.badges = user.badges.filter(b => b.name === "Newbie");
+        user.badges = user.badges.filter((b) => b.name === "Newbie");
         resetFields.push("badges");
       },
       examHistory: () => {
@@ -670,7 +687,7 @@ router.post("/reset-stats", authMiddleware, async (req, res) => {
 router.post("/deactivate-account", authMiddleware, async (req, res) => {
   try {
     const user = req.user;
-    
+
     if (user.isDeleted) {
       return res.status(400).json({
         success: false,
@@ -681,19 +698,20 @@ router.post("/deactivate-account", authMiddleware, async (req, res) => {
     user.isDeleted = true;
     user.isActive = false;
     user.deletedAt = new Date();
-    
+
     // Revoke all tokens
     if (user.tokens) {
-      user.tokens.forEach(token => {
+      user.tokens.forEach((token) => {
         token.isRevoked = true;
       });
     }
-    
+
     await user.save();
 
     return res.status(200).json({
       success: true,
-      message: "Account deactivated successfully. You have 30 days to reactivate before permanent deletion.",
+      message:
+        "Account deactivated successfully. You have 30 days to reactivate before permanent deletion.",
       deletedAt: user.deletedAt,
     });
   } catch (error) {
@@ -712,27 +730,30 @@ router.post("/deactivate-account", authMiddleware, async (req, res) => {
 router.post("/reactivate-account", authMiddleware, async (req, res) => {
   try {
     const user = req.user;
-    
+
     if (!user.isDeleted) {
       return res.status(400).json({
         success: false,
         message: "Account is already active",
       });
     }
-    
-    const daysDeleted = Math.floor((Date.now() - new Date(user.deletedAt)) / (1000 * 60 * 60 * 24));
-    
+
+    const daysDeleted = Math.floor(
+      (Date.now() - new Date(user.deletedAt)) / (1000 * 60 * 60 * 24),
+    );
+
     if (daysDeleted > 30) {
       return res.status(400).json({
         success: false,
-        message: "Account has been permanently deleted and cannot be reactivated",
+        message:
+          "Account has been permanently deleted and cannot be reactivated",
       });
     }
 
     user.isDeleted = false;
     user.isActive = true;
     user.deletedAt = null;
-    
+
     await user.save();
 
     return res.status(200).json({
@@ -756,7 +777,7 @@ router.get("/export-data", authMiddleware, async (req, res) => {
   try {
     const { format = "json" } = req.query;
     const user = req.user;
-    
+
     // Prepare export data
     const exportData = {
       exportDate: new Date().toISOString(),
@@ -792,7 +813,7 @@ router.get("/export-data", authMiddleware, async (req, res) => {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
-    
+
     if (format === "csv") {
       // Convert to CSV
       const flattenObject = (obj, prefix = "") => {
@@ -803,30 +824,38 @@ router.get("/export-data", authMiddleware, async (req, res) => {
           if (value && typeof value === "object" && !Array.isArray(value)) {
             Object.assign(result, flattenObject(value, newKey));
           } else {
-            result[newKey] = Array.isArray(value) ? JSON.stringify(value) : value;
+            result[newKey] = Array.isArray(value)
+              ? JSON.stringify(value)
+              : value;
           }
         }
         return result;
       };
-      
+
       const flatData = flattenObject(exportData);
       const headers = Object.keys(flatData);
       const csvRows = [headers.join(",")];
-      const values = headers.map(header => {
+      const values = headers.map((header) => {
         const value = flatData[header] || "";
         return `"${String(value).replace(/"/g, '""')}"`;
       });
       csvRows.push(values.join(","));
-      
+
       const csv = csvRows.join("\n");
-      
+
       res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", `attachment; filename=user_data_${user._id}.csv`);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=user_data_${user._id}.csv`,
+      );
       return res.send(csv);
     } else {
       // Default to JSON
       res.setHeader("Content-Type", "application/json");
-      res.setHeader("Content-Disposition", `attachment; filename=user_data_${user._id}.json`);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=user_data_${user._id}.json`,
+      );
       return res.json(exportData);
     }
   } catch (error) {
@@ -847,7 +876,7 @@ router.post("/clear-history", authMiddleware, async (req, res) => {
     const user = req.user;
     user.testHistory = [];
     await user.save();
-    
+
     return res.status(200).json({
       success: true,
       message: "Test history cleared successfully",
@@ -860,5 +889,416 @@ router.post("/clear-history", authMiddleware, async (req, res) => {
     });
   }
 });
+
+// Add to your UserProfileRoutes.js
+
+/* ════════════════════════════════════════════════════════════
+   GET /user-data
+   Fetches complete user data for logged-in users
+   ════════════════════════════════════════════════════════════ */
+router.get("/user-data", authMiddleware, async (req, res) => {
+  try {
+    console.log("it hitted")
+    const user = req.user;
+
+    const userData = {
+      userId: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      usertype: user.usertype,
+      xp: user.xp,
+      level: user.level,
+      points: user.points,
+      badges: user.badges,
+      streak: user.streak,
+      bestWPM: user.bestWPM,
+      bestAccuracy: user.bestAccuracy,
+      totalTests: user.totalTests,
+      totalWords: user.totalWords,
+      totalTime: user.totalTime,
+      totalCharacters: user.totalCharacters,
+      totalErrors: user.totalErrors,
+      achievements: user.achievements,
+      testHistory: user.testHistory,
+      stats: user.stats,
+      preferences: user.preferences,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+
+    return res.status(200).json({
+      success: true,
+      userData,
+    });
+  } catch (error) {
+    console.error("Get user data error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch user data",
+    });
+  }
+});
+
+/* ════════════════════════════════════════════════════════════
+   POST /sync-user-data
+   Syncs local storage data to logged-in user's profile
+   ════════════════════════════════════════════════════════════ */
+router.post("/sync-user-data", authMiddleware, async (req, res) => {
+  try {
+    const { localData } = req.body;
+    const user = req.user;
+
+    if (!localData) {
+      return res.status(400).json({
+        success: false,
+        message: "Local data is required",
+      });
+    }
+
+    let syncedFields = [];
+
+    // Sync typing stats (keep highest values)
+    if (localData.bestWPM && localData.bestWPM > user.bestWPM) {
+      user.bestWPM = localData.bestWPM;
+      syncedFields.push("bestWPM");
+    }
+
+    if (localData.bestAccuracy && localData.bestAccuracy > user.bestAccuracy) {
+      user.bestAccuracy = localData.bestAccuracy;
+      syncedFields.push("bestAccuracy");
+    }
+
+    if (localData.totalTests) {
+      user.totalTests += localData.totalTests;
+      syncedFields.push("totalTests");
+    }
+
+    if (localData.totalWords) {
+      user.totalWords += localData.totalWords;
+      syncedFields.push("totalWords");
+    }
+
+    if (localData.totalTime) {
+      user.totalTime += localData.totalTime;
+      syncedFields.push("totalTime");
+    }
+
+    // Sync gamification (keep highest)
+    if (localData.xp && localData.xp > user.xp) {
+      user.xp = localData.xp;
+      syncedFields.push("xp");
+
+      // Recalculate level
+      let newLevel = user.level;
+      let requiredXp = user.calculateRequiredXp(newLevel + 1);
+      while (user.xp >= requiredXp) {
+        newLevel++;
+        requiredXp = user.calculateRequiredXp(newLevel + 1);
+      }
+      if (newLevel > user.level) {
+        user.level = newLevel;
+        syncedFields.push("level");
+      }
+    }
+
+    if (localData.points && localData.points > user.points) {
+      user.points = localData.points;
+      syncedFields.push("points");
+    }
+
+    // Sync streak
+    if (localData.streak) {
+      if (localData.streak.current > user.streak.current) {
+        user.streak.current = localData.streak.current;
+        syncedFields.push("streak.current");
+      }
+      if (localData.streak.longest > user.streak.longest) {
+        user.streak.longest = localData.streak.longest;
+        syncedFields.push("streak.longest");
+      }
+    }
+
+    // Sync badges (avoid duplicates)
+    if (localData.badges && Array.isArray(localData.badges)) {
+      const existingBadges = new Set(user.badges.map((b) => b.name));
+      const newBadges = localData.badges
+        .filter((b) => b && b.name && !existingBadges.has(b.name))
+        .map((b) => ({
+          name: b.name,
+          earnedAt: b.earnedAt ? new Date(b.earnedAt) : new Date(),
+          icon: b.icon || null,
+          description: b.description || `Earned ${b.name} badge`,
+        }));
+
+      if (newBadges.length > 0) {
+        user.badges.push(...newBadges);
+        syncedFields.push("badges");
+      }
+    }
+
+    // Sync test history (avoid duplicates by date)
+    if (localData.testHistory && Array.isArray(localData.testHistory)) {
+      const existingDates = new Set(
+        user.testHistory.map(
+          (t) => new Date(t.date).toISOString().split("T")[0],
+        ),
+      );
+      const newTests = localData.testHistory.filter(
+        (t) => !existingDates.has(new Date(t.date).toISOString().split("T")[0]),
+      );
+
+      if (newTests.length > 0) {
+        user.testHistory.push(...newTests);
+        user.testHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
+        if (user.testHistory.length > 100) {
+          user.testHistory = user.testHistory.slice(0, 100);
+        }
+        syncedFields.push("testHistory");
+      }
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Synced ${syncedFields.length} fields from local data`,
+      syncedFields,
+    });
+  } catch (error) {
+    console.error("Sync user data error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to sync data",
+    });
+  }
+});
+
+/* ════════════════════════════════════════════════════════════
+   POST /save-test-result
+   Saves a typing test result to the user's profile
+   ════════════════════════════════════════════════════════════ */
+router.post("/save-test-result", authMiddleware, async (req, res) => {
+  try {
+    const { 
+      wpm, 
+      accuracy, 
+      mistakes, 
+      duration, 
+      mode, 
+      lang,
+      wordsTyped,
+      charsTyped,
+      consistency,
+      rawWpm,
+      difficulty 
+    } = req.body;
+
+    const user = req.user;
+
+    // Create test result object
+    const testResult = {
+      date: new Date(),
+      wpm: wpm || 0,
+      accuracy: accuracy || 0,
+      duration: duration || 0,
+      wordCount: wordsTyped || 0,
+      errorCount: mistakes || 0,
+      difficulty: difficulty || "medium",
+      textType: mode || "words",
+      xpEarned: Math.round((wpm * accuracy) / 100) || 0,
+      pointsEarned: Math.round(((wpm * accuracy) / 100) / 5) || 0,
+    };
+
+    // Add to test history
+    user.testHistory.push(testResult);
+    if (user.testHistory.length > 100) {
+      user.testHistory = user.testHistory.slice(-100);
+    }
+
+    // Update totals
+    user.totalTests = (user.totalTests || 0) + 1;
+    user.totalWords = (user.totalWords || 0) + (wordsTyped || 0);
+    user.totalTime = (user.totalTime || 0) + (duration || 0);
+    user.totalCharacters = (user.totalCharacters || 0) + (charsTyped || 0);
+    user.totalErrors = (user.totalErrors || 0) + (mistakes || 0);
+
+    // Update best WPM
+    if (wpm > user.bestWPM) {
+      user.bestWPM = wpm;
+      // Check if should add badge
+      if (wpm >= 50) {
+        const hasBadge = user.badges.some(b => b.name === "Speed Record");
+        if (!hasBadge) {
+          user.badges.push({
+            name: "Speed Record",
+            earnedAt: new Date(),
+            description: `Achieved ${wpm} WPM`
+          });
+        }
+      }
+    }
+
+    // Update best accuracy
+    if (accuracy > user.bestAccuracy) {
+      user.bestAccuracy = accuracy;
+      if (accuracy >= 100) {
+        const hasBadge = user.badges.some(b => b.name === "Perfect Typist");
+        if (!hasBadge) {
+          user.badges.push({
+            name: "Perfect Typist",
+            earnedAt: new Date(),
+            description: "Achieved 100% accuracy"
+          });
+        }
+      }
+    }
+
+    // Update XP and level
+    const xpEarned = Math.round((wpm * accuracy) / 100);
+    user.xp = (user.xp || 0) + xpEarned;
+    
+    // Recalculate level
+    let newLevel = user.level || 1;
+    let requiredXp = calculateRequiredXp(newLevel + 1);
+    while (user.xp >= requiredXp) {
+      newLevel++;
+      requiredXp = calculateRequiredXp(newLevel + 1);
+      // Award points on level up
+      user.points = (user.points || 0) + newLevel * 50;
+      
+      // Check for level badges
+      const levelBadges = {
+        5: "Rising Star",
+        10: "Typing Enthusiast",
+        25: "Speed Demon",
+        50: "Typing Master",
+        100: "Legendary Typist",
+      };
+      if (levelBadges[newLevel]) {
+        const hasBadge = user.badges.some(b => b.name === levelBadges[newLevel]);
+        if (!hasBadge) {
+          user.badges.push({
+            name: levelBadges[newLevel],
+            earnedAt: new Date(),
+            description: `Reached level ${newLevel}`
+          });
+        }
+      }
+    }
+    user.level = newLevel;
+
+    // Update points
+    const pointsEarned = Math.round(xpEarned / 5);
+    user.points = (user.points || 0) + pointsEarned;
+
+    // Update stats
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let dailyStat = user.stats.daily.find(
+      (s) => s.date && new Date(s.date).toDateString() === today.toDateString()
+    );
+    if (!dailyStat) {
+      dailyStat = {
+        date: today,
+        tests: 0,
+        avgWpm: 0,
+        avgAccuracy: 0,
+        totalTime: 0,
+        xpGained: 0,
+      };
+      user.stats.daily.push(dailyStat);
+      if (user.stats.daily.length > 30) user.stats.daily.shift();
+    }
+    dailyStat.tests += 1;
+    dailyStat.totalTime += duration || 0;
+    dailyStat.avgWpm = (dailyStat.avgWpm * (dailyStat.tests - 1) + (wpm || 0)) / dailyStat.tests;
+    dailyStat.avgAccuracy = (dailyStat.avgAccuracy * (dailyStat.tests - 1) + (accuracy || 0)) / dailyStat.tests;
+    dailyStat.xpGained = (dailyStat.xpGained || 0) + xpEarned;
+
+    // Update all-time stats
+    const allTime = user.stats.allTime;
+    const totalTests = allTime.totalTests + 1;
+    allTime.avgWpm = (allTime.avgWpm * allTime.totalTests + (wpm || 0)) / totalTests;
+    allTime.avgAccuracy = (allTime.avgAccuracy * allTime.totalTests + (accuracy || 0)) / totalTests;
+    allTime.bestWpm = Math.max(allTime.bestWpm || 0, wpm || 0);
+    allTime.bestAccuracy = Math.max(allTime.bestAccuracy || 0, accuracy || 0);
+    allTime.totalTests = totalTests;
+    allTime.totalTimeTyped = (allTime.totalTimeTyped || 0) + (duration || 0) / 3600;
+
+    // Update streak
+    const lastDate = user.streak?.lastDate;
+    const todayStr = today.toDateString();
+    if (!lastDate || new Date(lastDate).toDateString() !== todayStr) {
+      const daysDiff = lastDate 
+        ? Math.floor((today - new Date(lastDate)) / (1000 * 60 * 60 * 24))
+        : 2;
+      
+      user.streak = user.streak || { current: 0, longest: 0, lastDate: null };
+      if (daysDiff === 1) {
+        user.streak.current = (user.streak.current || 0) + 1;
+        user.streak.longest = Math.max(user.streak.longest || 0, user.streak.current);
+      } else if (daysDiff > 1) {
+        user.streak.current = 1;
+      }
+      user.streak.lastDate = today;
+      user.streak.lastUpdated = new Date();
+    }
+
+    // Update weekly goal
+    const weekStart = user.weeklyGoal?.weekStart;
+    if (!weekStart || Math.floor((today - new Date(weekStart)) / (1000 * 60 * 60 * 24)) >= 7) {
+      user.weeklyGoal = {
+        target: 7,
+        done: 1,
+        weekStart: today,
+        completed: false,
+      };
+    } else {
+      user.weeklyGoal.done = (user.weeklyGoal.done || 0) + 1;
+      if (user.weeklyGoal.done >= user.weeklyGoal.target && !user.weeklyGoal.completed) {
+        user.weeklyGoal.completed = true;
+        user.points = (user.points || 0) + 100;
+        const hasBadge = user.badges.some(b => b.name === "Weekly Warrior");
+        if (!hasBadge) {
+          user.badges.push({
+            name: "Weekly Warrior",
+            earnedAt: new Date(),
+            description: "Completed weekly goal"
+          });
+        }
+      }
+    }
+
+    await user.save();
+
+    // Get updated user data
+    const userData = user.getPublicProfile();
+    const typingStats = user.getTypingStats();
+
+    return res.status(200).json({
+      success: true,
+      message: "Test result saved successfully",
+      user: userData,
+      stats: typingStats,
+      xpEarned,
+      pointsEarned,
+    });
+
+  } catch (error) {
+    console.error("Save test result error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save test result",
+      error: error.message,
+    });
+  }
+});
+
+// Helper function for XP calculation
+function calculateRequiredXp(level) {
+  return Math.floor(100 + (level - 1) * 50);
+}
 
 module.exports = router;

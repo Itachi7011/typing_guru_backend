@@ -38,6 +38,7 @@ const authMiddleware = async (req, res, next) => {
       isActive: true,
     });
 
+    console.log(user.name)
 
     if (!user) {
       return res.status(401).json({
