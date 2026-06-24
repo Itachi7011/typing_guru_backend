@@ -4,8 +4,8 @@ const bcrypt = require("bcryptjs");
 const multer = require("multer");
 const { authMiddleware } = require("../middleware/userAuthentication"); // adjust path as needed
 const User = require("../models/User/Users"); // adjust path as needed
-
-/* ════════════════════════════════════════════════════════════
+ 
+/* ════════════════════════════════════════════════════════════ 
    Multer setup for avatar uploads (memory storage — we store
    the image as base64 in MongoDB per the schema's avatar field:
    { data, publicId, format, originalName, contentType })
@@ -19,8 +19,8 @@ const upload = multer({
     }
     cb(null, true);
   },
-});
-
+});  
+ 
 /* ════════════════════════════════════════════════════════════
    GET /me
    Returns the logged-in user's public profile + typing stats.
@@ -30,7 +30,7 @@ router.get("/me", authMiddleware, async (req, res) => {
     // console.log("it hitted")
     const userData = req.user.getPublicProfile();
     const typingStats = req.user.getTypingStats();
-
+ 
     return res.status(200).json({
       success: true,
       user: userData,
@@ -291,17 +291,17 @@ router.post("/change-preferences", authMiddleware, async (req, res) => {
    POST /change-password
    Body: { currentPassword, newPassword }
    ════════════════════════════════════════════════════════════ */
-router.post("/change-password", authMiddleware, async (req, res) => {
-  try {
+router.post("/change-password", authMiddleware, async (req, res) => { 
+  try { 
     const { currentPassword, newPassword } = req.body;
 
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        message: "Current and new password are required",
-      });
-    }
-
+    if (!currentPassword || !newPassword) { 
+      return res.status(400).json({ 
+        success: false, 
+        message: "Current and new password are required", 
+      }); 
+    } 
+ 
     if (newPassword.length < 8) {
       return res.status(400).json({
         success: false,
@@ -1284,7 +1284,7 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
       stats: typingStats,
       xpEarned,
       pointsEarned,
-    });
+    }); 
 
   } catch (error) {
     console.error("Save test result error:", error);
@@ -1294,11 +1294,11 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
       error: error.message,
     });
   }
-});
+}); 
 
-// Helper function for XP calculation
+// Helper function for XP calculation 
 function calculateRequiredXp(level) {
-  return Math.floor(100 + (level - 1) * 50);
-}
-
+  return Math.floor(100 + (level - 1) * 50); 
+} 
+ 
 module.exports = router;

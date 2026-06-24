@@ -527,12 +527,12 @@ router.post('/login', loginLimiter, validateLogin, async (req, res) => {
     );
     
     // Store tokens in database
-    user.tokens = user.tokens || [];
+    user.tokens = user.tokens || []; 
     
-// Add refresh token to tokens array
+// Add refresh token to tokens array 
 user.tokens.push({
-  token: refreshToken,
-  tokenType: 'refresh',
+  token: refreshToken, 
+  tokenType: 'refresh', 
   sessionId: crypto.randomBytes(16).toString('hex'),
   expiration: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
   createdAt: new Date(),
