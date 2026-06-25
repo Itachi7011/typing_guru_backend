@@ -8,12 +8,12 @@ const { sendUserRegistrationOTP, sendWelcomeEmail } = require('../services/email
 const bcrypt = require('bcryptjs');
 
 const User = require('../models/User/Users');
-const UserAuditLog = require('../models/User/UserAuditLog');
-const UserActivity = require('../models/User/UserActivity');
-const router = express.Router();
-const passport = require('passport');
-const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
+const UserAuditLog = require('../models/User/UserAuditLog'); 
+const UserActivity = require('../models/User/UserActivity'); 
+const router = express.Router(); 
+const passport = require('passport'); 
+const jwt = require('jsonwebtoken'); 
+const crypto = require('crypto'); 
 
 
 /* ================================================================

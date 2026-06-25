@@ -32,15 +32,15 @@ router.get("/me", authMiddleware, async (req, res) => {
     const typingStats = req.user.getTypingStats();
  
     return res.status(200).json({
-      success: true,
-      user: userData,
-      stats: typingStats,
+      success: true, 
+      user: userData, 
+      stats: typingStats, 
     });
   } catch (error) {
-    console.error("Get profile error:", error);
-    return res.status(500).json({
+    console.error("Get profile error:", error); 
+    return res.status(500).json({ 
       success: false,
-      message: "Failed to fetch profile",
+      message: "Failed to fetch profile", 
     });
   }
 });
@@ -229,12 +229,12 @@ const PREF_VALIDATORS = {
 
 router.post("/change-preferences", authMiddleware, async (req, res) => {
   try {
-    const { preferences } = req.body;
+    const { preferences } = req.body; 
 
-    if (!preferences || typeof preferences !== "object") {
-      return res.status(400).json({
-        success: false,
-        message: "Preferences object is required",
+    if (!preferences || typeof preferences !== "object") { 
+      return res.status(400).json({ 
+        success: false, 
+        message: "Preferences object is required", 
       });
     }
 
@@ -394,11 +394,11 @@ router.post("/sync-local-data", authMiddleware, async (req, res) => {
         (t) => !existingDates.has(new Date(t.date).toISOString()),
       );
 
-      if (newTests.length > 0) {
-        user.testHistory.push(...newTests);
-        if (user.testHistory.length > 100) {
-          user.testHistory = user.testHistory.slice(-100);
-        }
+      if (newTests.length > 0) { 
+        user.testHistory.push(...newTests); 
+        if (user.testHistory.length > 100) { 
+          user.testHistory = user.testHistory.slice(-100); 
+        } 
         syncedFields.push("testHistory");
       }
     }
