@@ -4,7 +4,7 @@ const bcrypt = require("bcryptjs");
 const multer = require("multer");
 const { authMiddleware } = require("../middleware/userAuthentication"); // adjust path as needed
 const User = require("../models/User/Users"); // adjust path as needed
- 
+
 /* ════════════════════════════════════════════════════════════ 
    Multer setup for avatar uploads (memory storage — we store
    the image as base64 in MongoDB per the schema's avatar field:
@@ -19,8 +19,8 @@ const upload = multer({
     }
     cb(null, true);
   },
-});  
- 
+});
+
 /* ════════════════════════════════════════════════════════════
    GET /me
    Returns the logged-in user's public profile + typing stats.
@@ -30,17 +30,17 @@ router.get("/me", authMiddleware, async (req, res) => {
     // console.log("it hitted")
     const userData = req.user.getPublicProfile();
     const typingStats = req.user.getTypingStats();
- 
+
     return res.status(200).json({
-      success: true, 
-      user: userData, 
-      stats: typingStats, 
+      success: true,
+      user: userData,
+      stats: typingStats,
     });
   } catch (error) {
-    console.error("Get profile error:", error); 
-    return res.status(500).json({ 
+    console.error("Get profile error:", error);
+    return res.status(500).json({
       success: false,
-      message: "Failed to fetch profile", 
+      message: "Failed to fetch profile",
     });
   }
 });
@@ -229,12 +229,12 @@ const PREF_VALIDATORS = {
 
 router.post("/change-preferences", authMiddleware, async (req, res) => {
   try {
-    const { preferences } = req.body; 
+    const { preferences } = req.body;
 
-    if (!preferences || typeof preferences !== "object") { 
-      return res.status(400).json({ 
-        success: false, 
-        message: "Preferences object is required", 
+    if (!preferences || typeof preferences !== "object") {
+      return res.status(400).json({
+        success: false,
+        message: "Preferences object is required",
       });
     }
 
@@ -291,17 +291,17 @@ router.post("/change-preferences", authMiddleware, async (req, res) => {
    POST /change-password
    Body: { currentPassword, newPassword }
    ════════════════════════════════════════════════════════════ */
-router.post("/change-password", authMiddleware, async (req, res) => { 
-  try { 
+router.post("/change-password", authMiddleware, async (req, res) => {
+  try {
     const { currentPassword, newPassword } = req.body;
 
-    if (!currentPassword || !newPassword) { 
-      return res.status(400).json({ 
-        success: false, 
-        message: "Current and new password are required", 
-      }); 
-    } 
- 
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Current and new password are required",
+      });
+    }
+
     if (newPassword.length < 8) {
       return res.status(400).json({
         success: false,
@@ -394,11 +394,11 @@ router.post("/sync-local-data", authMiddleware, async (req, res) => {
         (t) => !existingDates.has(new Date(t.date).toISOString()),
       );
 
-      if (newTests.length > 0) { 
-        user.testHistory.push(...newTests); 
-        if (user.testHistory.length > 100) { 
-          user.testHistory = user.testHistory.slice(-100); 
-        } 
+      if (newTests.length > 0) {
+        user.testHistory.push(...newTests);
+        if (user.testHistory.length > 100) {
+          user.testHistory = user.testHistory.slice(-100);
+        }
         syncedFields.push("testHistory");
       }
     }
@@ -898,7 +898,7 @@ router.post("/clear-history", authMiddleware, async (req, res) => {
    ════════════════════════════════════════════════════════════ */
 router.get("/user-data", authMiddleware, async (req, res) => {
   try {
-    console.log("it hitted")
+    console.log("it hitted");
     const user = req.user;
 
     const userData = {
@@ -1080,18 +1080,18 @@ router.post("/sync-user-data", authMiddleware, async (req, res) => {
    ════════════════════════════════════════════════════════════ */
 router.post("/save-test-result", authMiddleware, async (req, res) => {
   try {
-    const { 
-      wpm, 
-      accuracy, 
-      mistakes, 
-      duration, 
-      mode, 
+    const {
+      wpm,
+      accuracy,
+      mistakes,
+      duration,
+      mode,
       lang,
       wordsTyped,
       charsTyped,
       consistency,
       rawWpm,
-      difficulty 
+      difficulty,
     } = req.body;
 
     const user = req.user;
@@ -1107,7 +1107,7 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
       difficulty: difficulty || "medium",
       textType: mode || "words",
       xpEarned: Math.round((wpm * accuracy) / 100) || 0,
-      pointsEarned: Math.round(((wpm * accuracy) / 100) / 5) || 0,
+      pointsEarned: Math.round((wpm * accuracy) / 100 / 5) || 0,
     };
 
     // Add to test history
@@ -1128,12 +1128,12 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
       user.bestWPM = wpm;
       // Check if should add badge
       if (wpm >= 50) {
-        const hasBadge = user.badges.some(b => b.name === "Speed Record");
+        const hasBadge = user.badges.some((b) => b.name === "Speed Record");
         if (!hasBadge) {
           user.badges.push({
             name: "Speed Record",
             earnedAt: new Date(),
-            description: `Achieved ${wpm} WPM`
+            description: `Achieved ${wpm} WPM`,
           });
         }
       }
@@ -1143,12 +1143,12 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
     if (accuracy > user.bestAccuracy) {
       user.bestAccuracy = accuracy;
       if (accuracy >= 100) {
-        const hasBadge = user.badges.some(b => b.name === "Perfect Typist");
+        const hasBadge = user.badges.some((b) => b.name === "Perfect Typist");
         if (!hasBadge) {
           user.badges.push({
             name: "Perfect Typist",
             earnedAt: new Date(),
-            description: "Achieved 100% accuracy"
+            description: "Achieved 100% accuracy",
           });
         }
       }
@@ -1157,7 +1157,7 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
     // Update XP and level
     const xpEarned = Math.round((wpm * accuracy) / 100);
     user.xp = (user.xp || 0) + xpEarned;
-    
+
     // Recalculate level
     let newLevel = user.level || 1;
     let requiredXp = calculateRequiredXp(newLevel + 1);
@@ -1166,7 +1166,7 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
       requiredXp = calculateRequiredXp(newLevel + 1);
       // Award points on level up
       user.points = (user.points || 0) + newLevel * 50;
-      
+
       // Check for level badges
       const levelBadges = {
         5: "Rising Star",
@@ -1176,12 +1176,14 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
         100: "Legendary Typist",
       };
       if (levelBadges[newLevel]) {
-        const hasBadge = user.badges.some(b => b.name === levelBadges[newLevel]);
+        const hasBadge = user.badges.some(
+          (b) => b.name === levelBadges[newLevel],
+        );
         if (!hasBadge) {
           user.badges.push({
             name: levelBadges[newLevel],
             earnedAt: new Date(),
-            description: `Reached level ${newLevel}`
+            description: `Reached level ${newLevel}`,
           });
         }
       }
@@ -1195,9 +1197,9 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
     // Update stats
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     let dailyStat = user.stats.daily.find(
-      (s) => s.date && new Date(s.date).toDateString() === today.toDateString()
+      (s) => s.date && new Date(s.date).toDateString() === today.toDateString(),
     );
     if (!dailyStat) {
       dailyStat = {
@@ -1213,32 +1215,41 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
     }
     dailyStat.tests += 1;
     dailyStat.totalTime += duration || 0;
-    dailyStat.avgWpm = (dailyStat.avgWpm * (dailyStat.tests - 1) + (wpm || 0)) / dailyStat.tests;
-    dailyStat.avgAccuracy = (dailyStat.avgAccuracy * (dailyStat.tests - 1) + (accuracy || 0)) / dailyStat.tests;
+    dailyStat.avgWpm =
+      (dailyStat.avgWpm * (dailyStat.tests - 1) + (wpm || 0)) / dailyStat.tests;
+    dailyStat.avgAccuracy =
+      (dailyStat.avgAccuracy * (dailyStat.tests - 1) + (accuracy || 0)) /
+      dailyStat.tests;
     dailyStat.xpGained = (dailyStat.xpGained || 0) + xpEarned;
 
     // Update all-time stats
     const allTime = user.stats.allTime;
     const totalTests = allTime.totalTests + 1;
-    allTime.avgWpm = (allTime.avgWpm * allTime.totalTests + (wpm || 0)) / totalTests;
-    allTime.avgAccuracy = (allTime.avgAccuracy * allTime.totalTests + (accuracy || 0)) / totalTests;
+    allTime.avgWpm =
+      (allTime.avgWpm * allTime.totalTests + (wpm || 0)) / totalTests;
+    allTime.avgAccuracy =
+      (allTime.avgAccuracy * allTime.totalTests + (accuracy || 0)) / totalTests;
     allTime.bestWpm = Math.max(allTime.bestWpm || 0, wpm || 0);
     allTime.bestAccuracy = Math.max(allTime.bestAccuracy || 0, accuracy || 0);
     allTime.totalTests = totalTests;
-    allTime.totalTimeTyped = (allTime.totalTimeTyped || 0) + (duration || 0) / 3600;
+    allTime.totalTimeTyped =
+      (allTime.totalTimeTyped || 0) + (duration || 0) / 3600;
 
     // Update streak
     const lastDate = user.streak?.lastDate;
     const todayStr = today.toDateString();
     if (!lastDate || new Date(lastDate).toDateString() !== todayStr) {
-      const daysDiff = lastDate 
+      const daysDiff = lastDate
         ? Math.floor((today - new Date(lastDate)) / (1000 * 60 * 60 * 24))
         : 2;
-      
+
       user.streak = user.streak || { current: 0, longest: 0, lastDate: null };
       if (daysDiff === 1) {
         user.streak.current = (user.streak.current || 0) + 1;
-        user.streak.longest = Math.max(user.streak.longest || 0, user.streak.current);
+        user.streak.longest = Math.max(
+          user.streak.longest || 0,
+          user.streak.current,
+        );
       } else if (daysDiff > 1) {
         user.streak.current = 1;
       }
@@ -1248,7 +1259,10 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
 
     // Update weekly goal
     const weekStart = user.weeklyGoal?.weekStart;
-    if (!weekStart || Math.floor((today - new Date(weekStart)) / (1000 * 60 * 60 * 24)) >= 7) {
+    if (
+      !weekStart ||
+      Math.floor((today - new Date(weekStart)) / (1000 * 60 * 60 * 24)) >= 7
+    ) {
       user.weeklyGoal = {
         target: 7,
         done: 1,
@@ -1257,15 +1271,18 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
       };
     } else {
       user.weeklyGoal.done = (user.weeklyGoal.done || 0) + 1;
-      if (user.weeklyGoal.done >= user.weeklyGoal.target && !user.weeklyGoal.completed) {
+      if (
+        user.weeklyGoal.done >= user.weeklyGoal.target &&
+        !user.weeklyGoal.completed
+      ) {
         user.weeklyGoal.completed = true;
         user.points = (user.points || 0) + 100;
-        const hasBadge = user.badges.some(b => b.name === "Weekly Warrior");
+        const hasBadge = user.badges.some((b) => b.name === "Weekly Warrior");
         if (!hasBadge) {
           user.badges.push({
             name: "Weekly Warrior",
             earnedAt: new Date(),
-            description: "Completed weekly goal"
+            description: "Completed weekly goal",
           });
         }
       }
@@ -1284,8 +1301,7 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
       stats: typingStats,
       xpEarned,
       pointsEarned,
-    }); 
-
+    });
   } catch (error) {
     console.error("Save test result error:", error);
     return res.status(500).json({
@@ -1294,11 +1310,11 @@ router.post("/save-test-result", authMiddleware, async (req, res) => {
       error: error.message,
     });
   }
-}); 
+});
 
-// Helper function for XP calculation 
+// Helper function for XP calculation
 function calculateRequiredXp(level) {
-  return Math.floor(100 + (level - 1) * 50); 
-} 
- 
+  return Math.floor(100 + (level - 1) * 50);
+}
+
 module.exports = router;

@@ -1,37 +1,36 @@
 // routes/subscriptionPlans.js
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const SubscriptionPlan = require('../models/Admin/SubscriptionPlans');
-const { body, validationResult } = require('express-validator');
-const jwt = require('jsonwebtoken');
-const Admin = require('../models/Admin/Admins');
+const SubscriptionPlan = require("../models/Admin/SubscriptionPlans");
+const { body, validationResult } = require("express-validator");
+const jwt = require("jsonwebtoken");
+const Admin = require("../models/Admin/Admins");
 
-const PDFDocument = require('pdfkit');
-const { Parser } = require('json2csv');
+const PDFDocument = require("pdfkit");
+const { Parser } = require("json2csv");
 
 /* ================================================================
  * 💳 Subscription Plans Module
- * 
- * This file manages logic related to subscription plans and pricing.  
- * GET routes can be accessed by clients to view plans and features.  
- * 
- * All other routes (POST, PUT, DELETE) are restricted to admins only,  
+ *
+ * This file manages logic related to subscription plans and pricing.
+ * GET routes can be accessed by clients to view plans and features.
+ *
+ * All other routes (POST, PUT, DELETE) are restricted to admins only,
  * for creating, updating, or deleting subscription data.
- * 
- * Access control is enforced to protect billing and plan details.  
+ *
+ * Access control is enforced to protect billing and plan details.
  * Middleware checks must be in place to secure admin operations.
- * 
+ *
  * ================================================================ */
-
 
 const authenticateAdmin = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const token = req.header("Authorization")?.replace("Bearer ", "");
 
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: 'Access denied. No token provided.'
+        message: "Access denied. No token provided.",
       });
     }
 
@@ -44,26 +43,25 @@ const authenticateAdmin = async (req, res, next) => {
     if (!admin || !admin.isActive || admin.isSuspended) {
       return res.status(401).json({
         success: false,
-        message: 'Token is not valid or account is inactive'
+        message: "Token is not valid or account is inactive",
       });
     }
 
     // Check if token is still valid (not revoked)
-    const tokenValid = admin.tokens && admin.tokens.some(t =>
-      t.token === token &&
-      !t.isRevoked &&
-      t.expiration > new Date()
-    );
+    const tokenValid =
+      admin.tokens &&
+      admin.tokens.some(
+        (t) => t.token === token && !t.isRevoked && t.expiration > new Date(),
+      );
     if (!tokenValid) {
       return res.status(401).json({
         success: false,
-        message: 'Token has been revoked or expired'
+        message: "Token has been revoked or expired",
       });
     }
 
     // Remove sensitive data manually before attaching to request
     const adminData = admin.toObject();
-
 
     // Remove all sensitive fields manually
     delete adminData.password;
@@ -76,44 +74,48 @@ const authenticateAdmin = async (req, res, next) => {
     req.token = token;
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    console.error("Auth middleware error:", error);
     res.status(401).json({
       success: false,
-      message: 'Token is not valid'
+      message: "Token is not valid",
     });
   }
 };
 
-
 const subscriptionPlanValidation = [
-  body('name').notEmpty().trim().withMessage('Plan name is required'),
-  body('tier').isIn(['FREE', 'BASIC', 'PRO', 'ENTERPRISE', 'CUSTOM']).withMessage('Invalid tier'),
-  body('description').notEmpty().trim().withMessage('Description is required'),
+  body("name").notEmpty().trim().withMessage("Plan name is required"),
+  body("tier")
+    .isIn(["FREE", "BASIC", "PRO", "ENTERPRISE", "CUSTOM"])
+    .withMessage("Invalid tier"),
+  body("description").notEmpty().trim().withMessage("Description is required"),
 
   // More flexible price validation
-  body('price.monthly')
+  body("price.monthly")
     .custom((value) => {
       if (value === undefined || value === null) return false;
       // Allow both objects and numbers
-      return typeof value === 'object' || typeof value === 'number';
+      return typeof value === "object" || typeof value === "number";
     })
-    .withMessage('Monthly price must be an object with currency keys or a number'),
+    .withMessage(
+      "Monthly price must be an object with currency keys or a number",
+    ),
 
-  body('price.annually')
+  body("price.annually")
     .optional()
     .custom((value) => {
       if (value === undefined || value === null) return true; // Optional field
       // Allow both objects and numbers
-      return typeof value === 'object' || typeof value === 'number';
+      return typeof value === "object" || typeof value === "number";
     })
-    .withMessage('Annual price must be an object with currency keys or a number'),
+    .withMessage(
+      "Annual price must be an object with currency keys or a number",
+    ),
 
-  body('price.currency')
+  body("price.currency")
     .optional()
     .isLength({ min: 3, max: 3 })
-    .withMessage('Currency must be 3 characters'),
+    .withMessage("Currency must be 3 characters"),
 ];
-
 
 // Helper function to convert price Maps to plain objects
 
@@ -126,11 +128,5 @@ const convertPlanPricesToObjects = (plan) => {
   }
   return plan;
 };
-
-
-
-
-
-
 
 module.exports = router;
