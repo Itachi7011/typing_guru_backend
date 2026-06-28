@@ -512,11 +512,11 @@ const UserSchema = new mongoose.Schema(
         challengeReminders: { type: Boolean, default: true },
       },
       ui: {
-        theme: { 
-          type: String, 
-          enum: ["light", "dark", "auto"], 
-          default: "auto", 
-        }, 
+        theme: {
+          type: String,
+          enum: ["light", "dark", "auto"],
+          default: "auto",
+        },
         language: { type: String, default: "en" },
         soundEffects: { type: Boolean, default: true },
         keyboardSound: { type: Boolean, default: false },
@@ -533,6 +533,38 @@ const UserSchema = new mongoose.Schema(
           default: "timed",
         },
       },
+    },
+
+    gameStats: {
+      type: Map,
+      of: new mongoose.Schema(
+        {
+          bestScore: { type: Number, default: 0 },
+          gamesPlayed: { type: Number, default: 0 },
+          bestCombo: { type: Number, default: 0 },
+          totalWordsEaten: { type: Number, default: 0 },
+          lastPlayedAt: Date,
+        },
+        { _id: false },
+      ),
+      default: {},
+    },
+
+    gameSettings: {
+      avatarId: { type: String, default: "chomp" },
+      avatarColor: { type: String, default: null }, // hex override; null = avatar's own colour
+      soundPackId: { type: String, default: "arcade" },
+      masterVolume: { type: Number, default: 0.7, min: 0, max: 1 },
+      soundOn: { type: Boolean, default: true },
+      particlesOn: { type: Boolean, default: true },
+      beaconOn: { type: Boolean, default: true },
+      reduceMotion: { type: Boolean, default: false },
+      difficulty: {
+        type: String,
+        enum: ["easy", "medium", "hard", "insane"],
+        default: "medium",
+      },
+      sessionSeconds: { type: Number, default: 60 },
     },
 
     // MFA (reduced from extreme version)
@@ -1367,9 +1399,8 @@ UserSchema.methods.getPublicProfile = function () {
     email: this.email,
     avatar: this.avatar,
     usertype: this.usertype,
-    createdAt: this.createdAt,  // Add this line
-    lastLogin: this.lastLogin,  // Add this line (if not already there)
-
+    createdAt: this.createdAt, // Add this line
+    lastLogin: this.lastLogin, // Add this line (if not already there)
 
     // Gamification stats
     level: this.level,
