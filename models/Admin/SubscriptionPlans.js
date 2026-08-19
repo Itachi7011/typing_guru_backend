@@ -310,6 +310,61 @@ const SubscriptionPlanSchema = new mongoose.Schema({
     enum: ['PUBLIC', 'INVITE_ONLY', 'SPECIFIC_USERS', 'SPECIFIC_EMAILS'],
     default: 'PUBLIC'
   },
+  // ── Institutional / B2B plan tier (Phase 4) ─────────────────────────
+  // The schema already supported restricting a plan to a specific group
+  // via accessType SPECIFIC_USERS/SPECIFIC_EMAILS + allowedUsers/
+  // allowedUserEmails above — that's the access-control half. What was
+  // missing is the *institutional identity* half: who the buying
+  // organization is, how many seats they've paid for, and who to bill/
+  // contact. This block adds that without touching any existing field,
+  // so it's additive and backward-compatible with every plan already in
+  // the collection (all new fields default to institutional: false /
+  // null, matching today's individual-plan behavior exactly).
+  institutional: {
+    isInstitutional: {
+      type: Boolean,
+      default: false
+    },
+    organizationName: {
+      type: String,
+      trim: true,
+      maxlength: 150
+    },
+    organizationType: {
+      type: String,
+      enum: ['COACHING_CENTER', 'SCHOOL', 'COLLEGE', 'GOVT_TRAINING_INSTITUTE', 'CORPORATE', 'OTHER'],
+    },
+    billingContact: {
+      name: { type: String, trim: true },
+      email: { type: String, trim: true, lowercase: true },
+      phone: { type: String, trim: true }
+    },
+    seatLimit: {
+      // Total licenses purchased for this institution. null = unlimited
+      // (e.g. a negotiated enterprise-wide deal).
+      type: Number,
+      default: null,
+      min: 1
+    },
+    seatsUsed: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    // GST/PAN or equivalent tax ID, common requirement for Indian B2B
+    // invoicing (coaching centers usually need a GST invoice).
+    taxId: {
+      type: String,
+      trim: true
+    },
+    contractStartDate: Date,
+    contractEndDate: Date,
+    notes: {
+      type: String,
+      trim: true,
+      maxlength: 1000
+    }
+  },
   features: [FeatureSchema],
   limitations: PlanLimitationSchema,
   authenticationMethods: {
@@ -1350,6 +1405,62 @@ SubscriptionPlanSchema.methods.recordDowngrade = async function (toPlan = 'Unkno
 
   await this.save();
   return this;
+};
+
+// ── Institutional seat management (Phase 4) ───────────────────────────
+// Mirrors the existing recordPurchase/recordCancellation method style —
+// same self.save() pattern, same defensive initialization of nested
+// objects so it's safe to call on plans created before this field existed.
+
+// Returns true if the institution has room for one more user under its
+// seat limit. Non-institutional plans (or unlimited-seat institutional
+// plans, seatLimit === null) always return true.
+SubscriptionPlanSchema.methods.hasAvailableSeat = function () {
+  if (!this.institutional || !this.institutional.isInstitutional) return true;
+  if (this.institutional.seatLimit == null) return true; // unlimited
+  return (this.institutional.seatsUsed || 0) < this.institutional.seatLimit;
+};
+
+// Consumes one seat. Throws if the institution is at capacity, so callers
+// (e.g. the user-onboarding flow) can surface a clear "seats full, contact
+// your institution admin" error rather than silently over-provisioning.
+SubscriptionPlanSchema.methods.useSeat = async function () {
+  if (!this.institutional) this.institutional = { isInstitutional: false };
+  if (!this.hasAvailableSeat()) {
+    const err = new Error('No seats available for this institutional plan');
+    err.code = 'SEAT_LIMIT_REACHED';
+    throw err;
+  }
+  this.institutional.seatsUsed = (this.institutional.seatsUsed || 0) + 1;
+  await this.save();
+  return this;
+};
+
+// Releases a seat (e.g. a student leaves the coaching center's program).
+// Floors at 0 defensively, same pattern as recordDowngrade's
+// activeSubscriptions floor above.
+SubscriptionPlanSchema.methods.releaseSeat = async function () {
+  if (!this.institutional) this.institutional = { isInstitutional: false };
+  this.institutional.seatsUsed = Math.max(0, (this.institutional.seatsUsed || 0) - 1);
+  await this.save();
+  return this;
+};
+
+// Static helper for an admin dashboard: list institutional plans nearing
+// their seat limit (>=90% used), so account managers can proactively
+// reach out about an upsell before the institution hits a hard wall.
+SubscriptionPlanSchema.statics.getInstitutionsNearSeatLimit = async function (thresholdPct = 90) {
+  const plans = await this.find({
+    'institutional.isInstitutional': true,
+    'institutional.seatLimit': { $ne: null },
+    isActive: true,
+    isDeleted: false
+  });
+  return plans.filter((p) => {
+    const limit = p.institutional.seatLimit;
+    const used = p.institutional.seatsUsed || 0;
+    return limit > 0 && (used / limit) * 100 >= thresholdPct;
+  });
 };
 
 // Method to calculate churn rate

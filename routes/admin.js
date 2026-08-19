@@ -58,65 +58,14 @@ const PlatformSettings = require("../models/Admin/Settings");
  *
  * ================================================================ */
 
-const authenticateAdmin = async (req, res, next) => {
-  try {
-    const token = req.header("Authorization")?.replace("Bearer ", "");
+const authenticateAdmin = require("../middleware/adminAuthentication").authenticateAdmin;
 
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: "Access denied. No token provided.",
-      });
-    }
+/* The inline authenticateAdmin implementation that used to live here has
+   been moved verbatim to middleware/adminAuthentication.js so it can be
+   reused by other route files (exam calendar, subscription plans) without
+   duplicating auth logic. See that file's header comment for details. */
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // console.log(decoded)
 
-    // FIX: Remove all problematic field exclusions that cause path collisions
-    const admin = await Admin.findById(decoded.userId);
-    // Removed: .select('-password -tokens -security.passwordHistory -mfa.secret -mfa.backupCodes');
-
-    if (!admin || !admin.isActive || admin.isSuspended) {
-      return res.status(401).json({
-        success: false,
-        message: "Token is not valid or account is inactive",
-      });
-    }
-
-    // Check if token is still valid (not revoked)
-    const tokenValid =
-      admin.tokens &&
-      admin.tokens.some(
-        (t) => t.token === token && !t.isRevoked && t.expiration > new Date(),
-      );
-    if (!tokenValid) {
-      return res.status(401).json({
-        success: false,
-        message: "Token has been revoked or expired",
-      });
-    }
-
-    // Remove sensitive data manually before attaching to request
-    const adminData = admin.toObject();
-
-    // Remove all sensitive fields manually
-    delete adminData.password;
-    delete adminData.tokens;
-    delete adminData.mfa?.secret;
-    // delete adminData.mfa?.backupCodes;
-    delete adminData.security?.passwordHistory;
-
-    req.admin = adminData;
-    req.token = token;
-    next();
-  } catch (error) {
-    console.error("Auth middleware error:", error);
-    res.status(401).json({
-      success: false,
-      message: "Token is not valid",
-    });
-  }
-};
 
 const registrationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -433,7 +382,7 @@ const sendVerificationEmail = async (admin, otp, expiration) => {
  * - Uptime in human-readable format
  */
 
-router.get("/system-status", async (req, res) => {
+router.get("/system-status", authenticateAdmin, async (req, res) => {
   try {
     const [systemInfo, cpuInfo, memInfo, diskLayout, networkInfo, cpuTemp] =
       await Promise.all([
@@ -528,7 +477,7 @@ router.get("/system-status", async (req, res) => {
  * Returns database connection status and server response time
  */
 
-router.get("/connectivity-status", (req, res) => {
+router.get("/connectivity-status", authenticateAdmin, (req, res) => {
   const startTime = Date.now();
 
   // Check database connection status
@@ -551,7 +500,7 @@ router.get("/connectivity-status", (req, res) => {
  * Returns information about running processes, network interfaces and open ports
  */
 
-router.get("/processes-network", async (req, res) => {
+router.get("/processes-network", authenticateAdmin, async (req, res) => {
   try {
     const [processes, networkInterfaces] = await Promise.all([
       si.processes(),
@@ -600,7 +549,7 @@ router.get("/processes-network", async (req, res) => {
  * Combines: server-time, version, env-vars, hardware-info
  * Returns server time, application version, environment variables and hardware details
  */
-router.get("/system-info", async (req, res) => {
+router.get("/system-info", authenticateAdmin, async (req, res) => {
   try {
     const [baseboard, bios, chassis] = await Promise.all([
       si.baseboard(),
@@ -619,7 +568,19 @@ router.get("/system-info", async (req, res) => {
         version: packageJson.version || "Unknown",
         author: packageJson.author || "Unknown",
       },
-      environment: process.env,
+      // SECURITY FIX: this endpoint previously returned the entire
+      // `process.env` object (environment: process.env) to any caller.
+      // process.env holds JWT_SECRET, the database connection string,
+      // and every third-party API key this backend has — dumping it over
+      // HTTP, even to an authenticated admin, is a severe secret-leak
+      // risk (any XSS in the admin panel, any logging middleware that
+      // records response bodies, any browser extension, etc. would then
+      // have every credential the app owns). Expose only the specific,
+      // genuinely non-sensitive flags an admin dashboard actually needs.
+      environment: {
+        nodeEnv: process.env.NODE_ENV || "development",
+        nodeVersion: process.version,
+      },
       hardware: {
         baseboard: baseboard,
         bios: bios,
@@ -639,7 +600,7 @@ router.get("/system-info", async (req, res) => {
  * Combines: security-audit, pending-updates, deprecation-warnings, ssl-cert-status
  * Returns security audit results, pending updates, deprecation warnings and SSL certificate status
  */
-router.get("/security-status", (req, res) => {
+router.get("/security-status", authenticateAdmin, (req, res) => {
   // Run security audit
   exec("npm audit --json", { cwd: process.cwd() }, (error, stdout, stderr) => {
     let audit = {};
@@ -709,20 +670,21 @@ router.get("/security-status", (req, res) => {
 
 /**
  * MONITORING & LOGS API
- * Combines: file-watcher-status, system-logs, disk-usage-detail, logged-in-users
- * Returns file watcher status, system logs, disk usage details, and logged-in users
+ * Combines: system-logs, disk-usage-detail, logged-in-users
+ * Returns system logs, disk usage details, and logged-in users
  */
-router.get("/monitoring-logs", (req, res) => {
-  // Check file watcher status
-  let isWatching = false;
-  const watcher = chokidar.watch("./", {
-    ignored: /node_modules|\.git/,
-    persistent: true,
-  });
-
-  watcher.on("ready", () => {
-    isWatching = true;
-  });
+router.get("/monitoring-logs", authenticateAdmin, (req, res) => {
+  // BUG FIX: this route used to spin up a brand-new recursive chokidar
+  // filesystem watcher on the entire project directory (chokidar.watch("./"))
+  // on EVERY single request, and never called watcher.close(). Each hit
+  // left behind a live, persistent watcher — repeated calls (even from an
+  // uptime/health-check bot) would leak file descriptors without bound
+  // and eventually crash the process. The "isWatching" flag it produced
+  // was also unreliable: the response was sent from inside nested async
+  // exec() callbacks that would almost always resolve before the
+  // recursive watcher's "ready" event fired on a real project tree, so it
+  // was reporting a coin-flip result even when it wasn't leaking. Removed
+  // entirely rather than patched — it added no reliable signal.
 
   // Get system logs
   exec("tail -n 50 /var/log/syslog", (logError, logStdout, logStderr) => {
@@ -770,7 +732,6 @@ router.get("/monitoring-logs", (req, res) => {
             });
 
           res.json({
-            fileWatcher: { watching: isWatching },
             systemLogs: logStdout,
             diskUsage: { topDirs: usage },
             loggedInUsers: users,
@@ -785,76 +746,182 @@ router.get("/monitoring-logs", (req, res) => {
  * SERVICE STATUS CHECKER API
  * Accepts a list of URLs and returns their status
  */
-router.post("/service-status", async (req, res) => {
-  const { urls } = req.body;
 
-  if (!Array.isArray(urls)) {
-    return res.status(400).json({ error: "Please send a list of URLs" });
+// SECURITY: SSRF guard for /service-status below. Without this, an admin
+// (or, before the authenticateAdmin fix, literally anyone) could make the
+// server issue arbitrary outbound HTTP requests — including to internal-
+// only services, localhost, and cloud metadata endpoints like
+// 169.254.169.254 (which on AWS/GCP/Azure can leak instance credentials).
+// This blocks the well-known private/internal ranges and non-http(s)
+// protocols; it's a defense-in-depth allowlist-by-exclusion, not a
+// perfect SSRF fix (DNS rebinding is out of scope here), but it closes
+// off the highest-severity targets.
+function isBlockedForSSRF(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return true; // not a valid URL at all — reject
   }
+  if (!["http:", "https:"].includes(parsed.protocol)) return true;
 
-  const results = await Promise.all(
-    urls.map(async (url) => {
-      try {
-        const response = await axios.get(url, { timeout: 3000 });
-        return { url, status: response.status };
-      } catch (err) {
-        return { url, error: err.message };
-      }
-    }),
-  );
+  const host = parsed.hostname.toLowerCase();
+  if (host === "localhost" || host === "::1") return true;
 
-  // Create logs
-  await AdminAuditLog.create({
-    action: "service_status_checked",
-    adminId: req.admin._id,
-    resourceType: "system",
-    ipAddress: ip,
-    userAgent,
-    status: "success",
-    severity: "low",
-    metadata: {
-      checkedUrls: urls,
-      results,
-    },
-    role: req.admin.role,
-    department: req.admin.profile?.department,
-  });
+  // IPv4 literal checks for private/link-local/loopback ranges, including
+  // the cloud metadata address.
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const [a, b] = [parseInt(ipv4[1], 10), parseInt(ipv4[2], 10)];
+    if (a === 127) return true; // loopback
+    if (a === 10) return true; // 10.0.0.0/8
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+    if (a === 192 && b === 168) return true; // 192.168.0.0/16
+    if (a === 169 && b === 254) return true; // link-local + cloud metadata
+    if (a === 0) return true;
+  }
+  return false;
+}
 
-  await AdminActivityDB.create({
-    adminId: req.admin._id,
-    eventType: "monitoring",
-    eventAction: "service_status_checked",
-    target: {
-      targetId: null,
-      targetModel: "System",
-    },
-    status: "success",
-    ipAddress,
-    userAgent,
-    eventData: { checkedUrls: urls, results },
-    alertSeverity: "info",
-  });
+router.post(
+  "/service-status",
+  authenticateAdmin,
+  [body("urls").isArray({ min: 1, max: 20 })],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: "Please send a list of URLs (max 20)" });
+    }
 
-  await Admin.findByIdAndUpdate(req.admin._id, {
-    $push: {
-      activityLog: {
+    const { urls } = req.body;
+    const blocked = urls.filter((u) => typeof u !== "string" || isBlockedForSSRF(u));
+    if (blocked.length > 0) {
+      return res.status(400).json({
+        error: "One or more URLs target a blocked/internal address or invalid protocol",
+        blocked,
+      });
+    }
+
+    const results = await Promise.all(
+      urls.map(async (url) => {
+        try {
+          const response = await axios.get(url, {
+            timeout: 3000,
+            maxRedirects: 0, // don't follow redirects — a redirect could point at an internal address even if the original URL passed the SSRF check
+          });
+          return { url, status: response.status };
+        } catch (err) {
+          return { url, error: err.message };
+        }
+      }),
+    );
+
+    // BUG FIX: this previously referenced `ip`, `userAgent`, `ipAddress`,
+    // and `timestamp` — none of which were defined anywhere in this file.
+    // Every call to this endpoint would throw a ReferenceError here, after
+    // the (unauthenticated, SSRF-capable) requests above had already been
+    // made — meaning the dangerous part ran but the response never
+    // reliably came back correctly. Now derived properly from `req`.
+    const reqIp = req.ip;
+    const reqUserAgent = req.get("user-agent");
+    const now = new Date();
+
+    try {
+      await AdminAuditLog.create({
         action: "service_status_checked",
-        resourceType: "System",
-        resourceId: null,
-        details: { checkedUrls: urls, results },
-        ipAddress,
-        userAgent,
-        timestamp,
-      },
-    },
-  });
+        adminId: req.admin._id,
+        resourceType: "system",
+        ipAddress: reqIp,
+        userAgent: reqUserAgent,
+        status: "success",
+        severity: "low",
+        metadata: { checkedUrls: urls, results },
+        role: req.admin.role,
+        department: req.admin.profile?.department,
+      });
 
-  res.json({ results });
-});
+      await AdminActivityDB.create({
+        adminId: req.admin._id,
+        eventType: "monitoring",
+        eventAction: "service_status_checked",
+        target: { targetId: null, targetModel: "System" },
+        status: "success",
+        ipAddress: reqIp,
+        userAgent: reqUserAgent,
+        eventData: { checkedUrls: urls, results },
+        alertSeverity: "info",
+      });
+
+      // BUG FIX: req.admin is a plain object (see adminAuthentication.js —
+      // it's stripped via .toObject() before being attached to the
+      // request), not a live Mongoose document, so req.admin.logActivity(),
+      // used elsewhere in this file, isn't callable on it. Using
+      // findByIdAndUpdate directly instead, matching how activity logging
+      // is done correctly elsewhere in this same file.
+      await Admin.findByIdAndUpdate(req.admin._id, {
+        $push: {
+          activityLog: {
+            action: "service_status_checked",
+            resourceType: "System",
+            resourceId: null,
+            details: { checkedUrls: urls, results },
+            ipAddress: reqIp,
+            userAgent: reqUserAgent,
+            timestamp: now,
+          },
+        },
+      });
+    } catch (logErr) {
+      // Logging failures shouldn't hide the actual result from the admin.
+      console.error("service-status audit logging failed:", logErr.message);
+    }
+
+    res.json({ results });
+  },
+);
 
 // ==========================================
 // DATABASE MANAGEMENT ROUTES
 // ==========================================
+
+// BUG FIX (applies to the three routes further below that call this):
+// each used to call `req.admin.logActivity(...)`, a Mongoose instance
+// method — but middleware/adminAuthentication.js deliberately attaches
+// req.admin as a plain object (`admin.toObject()`, sensitive fields
+// stripped), not a live document, specifically so route code can't
+// accidentally mutate or re-save a document carrying stale/partial data.
+// That means `.logActivity` was never callable, and every one of those
+// routes would throw a TypeError right after the actual database action
+// (reset/export/reindex) had already completed — so admins would see a
+// 500 error even though the real action, in two cases destructive or
+// expensive, had already succeeded. This helper (named logAdminDatabaseAction,
+// distinct from the unrelated logAdminActivity(req, action, resourceId,
+// metadata) helper defined earlier in this file at ~line 261 — that one
+// takes a different argument shape and the two previously collided under
+// the same identifier, which is a hard SyntaxError in Node module scope,
+// not just a style issue; this file could not be required at all until
+// the rename) replaces the broken call with a direct
+// Admin.findByIdAndUpdate($push), matching the pattern already used
+// correctly elsewhere in this file (see /service-status above).
+async function logAdminDatabaseAction(adminId, action, resourceType, resourceId, details, ipAddress, userAgent) {
+  try {
+    await Admin.findByIdAndUpdate(adminId, {
+      $push: {
+        activityLog: {
+          action,
+          resourceType,
+          resourceId,
+          details,
+          ipAddress,
+          userAgent,
+          timestamp: new Date(),
+        },
+      },
+    });
+  } catch (err) {
+    console.error(`Admin activity logging failed (${action}):`, err.message);
+  }
+}
 
 // Get comprehensive database statistics
 router.get("/database/stats", authenticateAdmin, async (req, res) => {
@@ -977,7 +1044,8 @@ router.post(
       await db.collection(collectionName).deleteMany({});
 
       // Log the action
-      await req.admin.logActivity(
+      await logAdminDatabaseAction(
+        req.admin._id,
         "reset_collection",
         "database",
         null,
@@ -1010,6 +1078,25 @@ router.get(
       const mongoose = require("mongoose");
       const db = mongoose.connection.db;
 
+      // SECURITY FIX: unlike /database/reset above (which has an
+      // allowlist), this export route previously accepted ANY collection
+      // name and dumped up to 1000 raw documents as-is — including the
+      // Users/Admins collections, which contain hashed passwords, MFA
+      // secrets, and session tokens even after typical field-select
+      // exclusions elsewhere in the app (this route bypasses those
+      // entirely since it talks to the raw MongoDB driver, not a Mongoose
+      // model with schema-level field hiding). Blocking raw export of
+      // anything that looks like an auth/credential-bearing collection;
+      // legitimate exports of user data should go through a dedicated,
+      // field-redacted endpoint instead of this raw dump.
+      const blockedPatterns = /user|admin|token|auth|password|payment|session/i;
+      if (blockedPatterns.test(collectionName)) {
+        return res.status(403).json({
+          message:
+            "This collection cannot be raw-exported — it likely contains credentials or payment data. Use a dedicated, field-redacted export for this data instead.",
+        });
+      }
+
       const data = await db
         .collection(collectionName)
         .find({})
@@ -1024,7 +1111,8 @@ router.get(
       res.json(data);
 
       // Log the export
-      await req.admin.logActivity(
+      await logAdminDatabaseAction(
+        req.admin._id,
         "export_collection",
         "database",
         null,
@@ -1048,6 +1136,22 @@ router.post(
   authenticateAdmin,
   async (req, res) => {
     try {
+      // SAFETY GATE: reIndex() below runs on EVERY collection in the
+      // database and is a blocking, potentially expensive operation —
+      // some MongoDB deployments lock the collection for the duration of
+      // a rebuild. Triggering this on a live production database with
+      // real traffic (e.g. from a misclick on an admin dashboard button)
+      // could cause a real outage. Requiring an explicit confirmation
+      // flag makes that a deliberate, hard-to-trigger-by-accident action
+      // rather than a single click away.
+      if (req.body?.confirm !== true) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "This rebuilds indexes on every collection and can be slow/blocking on a live database. Resend with { \"confirm\": true } to proceed.",
+        });
+      }
+
       const mongoose = require("mongoose");
       const db = mongoose.connection.db;
 
@@ -1091,7 +1195,8 @@ router.post(
       );
 
       // Log the optimization action
-      await req.admin.logActivity(
+      await logAdminDatabaseAction(
+        req.admin._id,
         "optimize_indexes",
         "database",
         null,

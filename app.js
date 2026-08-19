@@ -17,6 +17,22 @@ require("./scheduler/cleanupAccounts");
 
 const UserAuthRoutes = require('./routes/userAuth');
 const UserProfileRoutes = require('./routes/userProfile');
+const LeaderboardRoutes = require('./routes/leaderboard');
+const ExamCalendarRoutes = require('./routes/examCalendar');
+const SubscriptionPlansRoutes = require('./routes/subscriptionPlans');
+const AdminAuthRoutes = require('./routes/adminAuth');
+// NOTE: routes/admin.js is intentionally NOT required/mounted here. It's a
+// ~1,000-line file covering system stats, file-watching (chokidar), and
+// several child_process.exec() calls (process list, npm audit, log
+// tailing, `who`) that haven't been reviewed line-by-line for production
+// exposure. It was fixed (a real duplicate-identifier SyntaxError that
+// prevented it from loading at all was found and corrected — see
+// COMPETITIVE_ANALYSIS_AND_ROADMAP.md) and verified to require() cleanly
+// in isolation, but fixing a blocking bug isn't the same thing as a
+// security review, and there's currently no working admin login route
+// anyway (see the same doc) — so mounting it wouldn't expose anything
+// reachable yet regardless. Deliberately left unmounted pending a proper
+// review + the admin-auth design decision.
 
 // ============ CORS Configuration ============
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -96,6 +112,10 @@ app.use(compression());
 // Routes
 app.use('/api/user/auth', UserAuthRoutes);
 app.use('/api/user/profile', UserProfileRoutes);
+app.use('/api/leaderboard', LeaderboardRoutes);
+app.use('/api/exam-calendar', ExamCalendarRoutes);
+app.use('/api/subscription-plans', SubscriptionPlansRoutes);
+app.use('/api/admin/auth', AdminAuthRoutes);
 
 // Test route to check CORS
 app.get('/api/test-cors', (req, res) => {
