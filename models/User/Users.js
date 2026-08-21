@@ -679,6 +679,51 @@ const UserSchema = new mongoose.Schema(
       },
     ],
 
+    // ── Subscription (Stripe) ────────────────────────────────────────
+    // Deliberately NOT built on top of models/Admin/SubscriptionPlans.js
+    // — that model is a generic multi-tenant B2B SaaS billing schema
+    // (API keys, SIEM integrations, geo-locking, custom roles, seat
+    // counts...) built for a very different kind of product. This app
+    // has exactly one thing to sell: a single low-cost "Pro" tier that
+    // unlocks a handful of advanced features for typing-test aspirants,
+    // priced in USD and INR. A dedicated, minimal shape here is easier
+    // to reason about and keeps the free tier (the overwhelming default
+    // for this app's audience) as the actual default rather than one
+    // enum value buried in a much larger schema built for someone else's
+    // product. See routes/subscription.js and README.md ("Subscriptions
+    // (Stripe)") for the full design.
+    subscription: {
+      plan: {
+        type: String,
+        enum: ["free", "pro"],
+        default: "free",
+      },
+      status: {
+        // Mirrors Stripe subscription statuses directly (see
+        // https://stripe.com/docs/api/subscriptions/object#subscription_object-status)
+        // rather than inventing a parallel vocabulary, so webhook
+        // handlers can set this 1:1 from the Stripe event payload.
+        type: String,
+        enum: [
+          "inactive", // never subscribed / plan === "free"
+          "trialing",
+          "active",
+          "past_due",
+          "canceled",
+          "unpaid",
+          "incomplete",
+          "incomplete_expired",
+        ],
+        default: "inactive",
+      },
+      stripeCustomerId: { type: String, index: true, sparse: true },
+      stripeSubscriptionId: { type: String, index: true, sparse: true },
+      stripePriceId: String,
+      currency: { type: String, enum: ["usd", "inr"], default: "usd" },
+      currentPeriodEnd: Date,
+      cancelAtPeriodEnd: { type: Boolean, default: false },
+    },
+
     // Tokens
     tokens: [
       {

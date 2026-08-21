@@ -1,0 +1,23 @@
+# typing_guru_backend/Dockerfile.worker
+#
+# Same source tree as the API's Dockerfile, but a different entrypoint
+# and no exposed port — this process only consumes jobs from Redis
+# (queues/emailQueue.js -> workers/emailWorker.js), it doesn't serve
+# HTTP. Built and deployed as its own image so it can be scaled
+# completely independently of the API (including to zero replicas when
+# idle — see k8s/keda-scaledobject-email-worker.yaml).
+
+FROM node:20-alpine AS base
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY . .
+
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+USER appuser
+
+# No EXPOSE — this process doesn't listen on any port.
+
+CMD ["node", "workers/emailWorker.js"]

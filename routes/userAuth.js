@@ -15,12 +15,12 @@ const router = express.Router();
 const User = require("../models/User/Users");
 const UserActivity = require(`../models/User/UserActivity`);
 const UserNotification = require(`../models/User/UserNotification`);
+const { emitNewNotification } = require('../sockets');
+const { enqueueEmail } = require('../queues/emailQueue');
 
 // Services
 const {
   generateOTP,
-  sendUserRegistrationOTP,
-  sendOTPEmail,
 } = require("../services/emailService");
 
 // ============ RATE LIMITERS ============
@@ -192,6 +192,10 @@ const createNotification = async (
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
     });
     await notification.save();
+    // Best-effort live push over Socket.IO (see sockets/index.js); the DB
+    // write above is the source of truth regardless of whether anyone is
+    // connected right now.
+    emitNewNotification(String(userId), notification);
     return notification;
   } catch (error) {
     console.error("Error creating notification:", error);
@@ -199,13 +203,27 @@ const createNotification = async (
 };
 
 // ============ PASSPORT GOOGLE STRATEGY ============
-passport.use(
-  new GoogleStrategy(
-    {
-      clientID: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: "/api/user/auth/google/callback",
-    },
+// BUG FIX: `passport-google-oauth20`'s Strategy constructor throws
+// synchronously ("OAuth2Strategy requires a clientID option") if
+// clientID/clientSecret are missing. Since this ran unconditionally at
+// module load time, the *entire backend* failed to boot — not just the
+// Google login feature — for any environment (including a fresh local
+// dev setup) that hadn't configured Google OAuth credentials. Guarded so
+// the strategy is only registered when both env vars are actually
+// present; the /google routes below now return a clear 503 instead of
+// the whole process refusing to start.
+const googleOAuthConfigured = !!(
+  process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+);
+
+if (googleOAuthConfigured) {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL: "/api/user/auth/google/callback",
+      },
     async (accessToken, refreshToken, profile, done) => {
       try {
         let user = await User.findOne({
@@ -252,8 +270,14 @@ passport.use(
         return done(error, null);
       }
     },
-  ),
-);
+    ),
+  );
+} else {
+  console.warn(
+    "⚠️  GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET not set — Google OAuth login is disabled. " +
+      "The rest of the server will still start normally.",
+  );
+}
 
 passport.serializeUser((user, done) => {
   done(null, user.id);
@@ -332,8 +356,13 @@ router.post("/signup", signupLimiter, validateSignup, async (req, res) => {
 
     await newUser.save();
 
-    // Send OTP email
-    const emailSent = await sendUserRegistrationOTP(email.toLowerCase(), {
+    // Send OTP email — queued via BullMQ/Redis when configured (see
+    // queues/emailQueue.js) so this request doesn't block on SendGrid;
+    // falls back to sending inline if Redis isn't set up. `emailSent`
+    // therefore means "accepted for delivery", not "delivered" — same
+    // as it always effectively was, since neither path here waited for
+    // the recipient's mail server to actually accept the message.
+    const emailSent = await enqueueEmail("registration_otp", email.toLowerCase(), {
       name: name.trim(),
       otp,
       website: { websiteName: "Typing Exam Hub" },
@@ -413,8 +442,8 @@ router.post("/send-email-otp", otpLimiter, async (req, res) => {
     user.verificationTokenExpires = otpExpires;
     await user.save();
 
-    // Send OTP email
-    const emailSent = await sendUserRegistrationOTP(email.toLowerCase(), {
+    // Send OTP email (queued — see comment on the signup route above)
+    const emailSent = await enqueueEmail("registration_otp", email.toLowerCase(), {
       name: user.name,
       otp,
       website: { websiteName: "Typing Exam Hub" },
@@ -702,8 +731,8 @@ router.post("/forgot-password", passwordResetLimiter, async (req, res) => {
     user.passwordResetExpires = otpExpires;
     await user.save();
 
-    // Send OTP email
-    await sendOTPEmail(email.toLowerCase(), {
+    // Send OTP email (queued — see comment on the signup route above)
+    await enqueueEmail("otp", email.toLowerCase(), {
       name: user.name,
       otp,
       website: "Typing Exam Hub",
@@ -885,6 +914,15 @@ router.post(
 // @access  Public
 router.get(
   "/google",
+  (req, res, next) => {
+    if (!googleOAuthConfigured) {
+      return res.status(503).json({
+        success: false,
+        message: "Google login is not configured on this server.",
+      });
+    }
+    next();
+  },
   passport.authenticate("google", { scope: ["profile", "email"] }),
 );
 
@@ -893,6 +931,15 @@ router.get(
 // @access  Public
 router.get(
   "/google/callback",
+  (req, res, next) => {
+    if (!googleOAuthConfigured) {
+      return res.status(503).json({
+        success: false,
+        message: "Google login is not configured on this server.",
+      });
+    }
+    next();
+  },
   passport.authenticate("google", {
     failureRedirect: "/auth/login",
     session: false,
